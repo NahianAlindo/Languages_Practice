@@ -3,12 +3,15 @@ using namespace std;
 
 class Employee
 {
+private:
+    int key;
+
 public: // public declaration
     // data members and instance variables
     int id;
     string name;
     float salary;
-
+    static float rateOfIncrement;
     // default constructor
     Employee()
     {
@@ -26,6 +29,7 @@ public: // public declaration
         this->id = id;
         this->name = name;
         this->salary = salary;
+        rateOfIncrement += 0.25;
     }
 
     void insert(int i, string n, float s) // mutator or, setter method
@@ -37,9 +41,12 @@ public: // public declaration
 
     void display() // accessor or, getter method
     {
-        cout << id << " " << name << " " << salary << endl;
+        cout << id << " " << name << " " << salary << " " << rateOfIncrement << endl;
     }
 };
+
+// static value of a class:  initialization
+float Employee::rateOfIncrement = 6.5;
 
 int main()
 {
