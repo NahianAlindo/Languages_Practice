@@ -1,0 +1,1144 @@
+Commands
+================================
+bin/rails about
+bin/rails server
+bin/rails console
+
+bin/rails dbconsole
+bin/rails db:seed
+bin/rails db:migrate
+bin/rails db:rollback
+bin/rails db:cache
+bin/rails db:migrate:status
+bin/rails db:migrate:redo 
+bin/rails db:schema migrations
+RAILS_ENV=production bin/rails db:migrate
+
+bin/rails dev:cache
+bin/rails log:clear LOGS=test
+
+bin/rails generate migration add_quanity_to_line_items quantity:integer
+bin/rails generate migration add_order_to_line_item order:references
+bin/rails generate migrations
+bin/rails generate controller Say hello goodbye
+bin/rails generate controller Store index
+bin/rails generate scaffold LineItem product:references cart:belongs_to
+bin/rails generate scaffold Cart
+bin/rails generate scaffold Product title:string description:text
+bin/rails generate scaffold User name:string password:digest
+bin/rails g model support_request
+bin/rails generate model discount
+bin/rails generate mailer Order received shipped
+bin/rails generate channel products # action cable
+bin/rails generate job charge_order # job for background
+
+bin/rails g mailbox support # support mailbox to receive emails
+bin/rails g mailer support_request respond
+bin/rails action_mailbox:install
+bin/rails action_text:install
+bin/rails webpacker:install:react
+
+bin/rails generate rspec:install
+bin/rails generate spec:model Cart
+bin/rails spec
+bin/rails spec SPEC_OPTS="--format=doc"
+bin/rails test:controllers
+bin/rails test
+bin/rails test:models
+bin/rails test:system
+bin/rails test/controllers/test_file.rb
+
+
+
+
+ACTIVE RECORD
+======================================================================================================================================
+@quotes = Quote.ordered
+Order.find_by(name: "Dave")
+user.superuser? (is superuser?)
+created_on -> date
+created_at -> time
+
+xxx_id -> foreign key reference to an outside table with xxx plural
+
+Order.first -> first record of Orders table
+
+Order.first.pay_type_before_type_cast -> raw data before type cast
+
+set primary key using self.primary_key = "isbn"
+
+obj.attributes -> get attributes of the object
+
+
+one-to-one 
+==========================================
+invoice                   orders
+-----------             ----------
+belongs_to :order        has_one :invoice
+
+table containing the foreign key has the belongs_to :order
+==========================================
+
+
+one-to-many
+==========================================
+line_items                orders
+-----------              ---------
+belongs_to :order        has_many :line_items
+=========================================
+
+many-to-many
+=================================================================================
+categories               			products
+-----------              			---------
+has_and_belongs_to_many :products		has_and_belongs_to_many :categories
+=================================================================================
+
+
+to create a new record in the database:
+
+o = Order.new @Order.new(order_params) o.save() -> mandatory
+
+
+product_list = Product.find(params[:product_ids]) -> to fetch many products based on primary key
+
+
+
+name = params[:name] -> get the name from the forms
+pos = Order.where("name = '#{name}' and pay_type = 'po') -> this is another query BAD DUE TO RISK OF SQL INJECTION
+
+placeholders should be used and specified by the question mark ? or by using named placeholders
+
+three variations could be used for the same query like so:   pos = Order.where(params[:order]) 😑️ BAD
+
+or, pos = Order.where("name = :name and pay_type = :pay_type", params[:order]) 😑️
+
+😑️
+name = params[:name]
+pay_type = params[:pay_type]
+pos = Order.where("name = :name and pay_type = :pay_type, pay_type: pay_type, name: name")
+
+BEST would be to query like this
+pos = Order.where(name: params[:name], pay_type: params[:pay_type])
+
+# User.where("name like ?", params[:name]+"%")
+
+to_a in a query returns array by implicitly calling all()
+
+
+order_by equivalent query -> orders = Order.where(name: 'Dave').order("pay_type, shipped_at DESC") -> order_by payment type and then ship date
+limit number of returned rows-> orders = Order.where(name: ''Dave).order("pay_type, shipped_at DESC").limit(10)
+
+
+# The view wants to display orders grouped into pages,
+# where each page shows page_size orders at a time.
+# This method returns the orders on page page_num (starting
+# at zero).
+
+def Order.find_on_page(page_num, page_size)
+  order(:id).limit(page_size).offset(page_num*page_size)
+end
+
+
+SELECT * hoy normally
+select thik moto use korte hole
+list = Talk.select("title, speaker, recorded_on")
+
+=============================================================================================================
+JOIN
+LineItem.select('li.quantity').where("pr.title = 'Programming Ruby 1.9'").joins("as li inner join products as pr on li.product_id = pr.id")
+
+readonly method -> joins and select() methods mark objects to be readonly automatically.
+==============================================================================================================
+
+
+GROUP_BY
+===================================================================================================================================
+summary = LineItem.select("sku, sum(amount) as amount").group("sku")
+
+LOCK  -> share mode lock gives the latest data in row and guarantees that no on e else can alter that row while we hold the lock
+Account.transaction do
+  ac = Account.where(id: id).lock("LOCK IN SHARE MODE").first
+  ac.balance -= amount if ac.balance > amount
+  ac.save
+end
+====================================================================================================================================
+
+
+getting column stats / statistics
+================================
+average = Product.average(:price)
+max = Product.maximum(:price)
+min = Product.minimum(:price)
+total = Product.sum(:price)
+number = Product.count
+
+-> aggregate functions
+Order.where("amount > 20").minimum(:amount)
+
+group of results pawa jabe -> result = Order.group(:state).maximum(:amount)  # maximum sale amount for each state
+result = Order.group(:state).order("max(amount) desc").limit(3) # for SQLite
+
+
+========================================================================
+Record scopes
+class Order < ApplicationRecord
+  scope :last_n_days, ->(days) {where('updated < ?', days)}
+end
+Such a named scope would make finding the worth of last week’s orders a
+snap.
+
+orders = Order.last_n_days(7)
+
+class Order < ApplicationRecord
+scope :checks, -> { where(pay_type: :check) }
+end
+
+orders = Order.checks.last_n_days(7)
+========================================================================
+
+
+Writing your own SQL
+---------------------
+
+orders = LineItem.find_by_sql("select line_items.* from line_items, orders" +
+				" where order_id = orders.id " + " and orders.name = 'Dave Thomas'")
+				
+attributes() , attribute_names() , and attribute_present?()
+
+orders = Order.find_by_sql("select name, pay_type from orders") first = orders[0] p first.attributes / first.attribute_names / first.attribute_present?("address")
+
+
+
+items = LineItem.find_by_sql("select *,                                  " +
+                             "  products.price as unit_price,            " +
+                             "  quantity*products.price as total_price,  " +
+                             "  products.title as title                  " +
+                             " from line_items, products                 " +
+                             " where line_items.product_id = products.id ")
+
+
+
+Order.find_by_sql(["select * from orders where amount > ?", params[:amount]])
+
+
+stock = Market.find_by(ticker: "RUBY")
+loop do
+  puts "Price = #{stock.price}"
+  sleep 60
+  stock.reload  ## reload refreshes object's attributes from the database manually
+end
+
+=====================================================================================
+UPDATE
+obj.save() updates the database
+
+if you use find_by_sql, then id must be fetched to use obj.save() like the following:
+orders = Order.find_by_sql("select id, name, pay_type from orders where id=123")
+first = orders[0]
+first.name = "Wilma"
+first.save
+
+or,
+order = Order.find(123)
+order.update(name: "Barney", email: "barney@bedrock.com")
+
+The update() method is most commonly used in controller actions where it
+merges data from a form into an existing database row like so:
+
+def save_after_edit
+  order = Order.find(params[:id])
+  if order.update(order_params)
+    redirect_to action: :index
+  else
+    render action: :edit
+  end
+end
+
+
+update_all() class method allows us to specify the set and where
+clauses of the SQL update statement. For example, the following increases the
+prices of all products with Java in their title by 10 percent:
+result = Product.update_all("price = 1.1*price", "title like '%Java%'")
+
+returns number of rows that were changed in the database
+
+
+save returns true if record was saved, nil otherwise save! returns an exception if ====order.save else end====s
+begin order.save! rescue RecordInvalid => error end
+
+
+======================================================================================================================
+create returns the active record object regardless of whether it was successfully saved-> check for validation errors
+create! returns the active record object on success; raises an exception otherwise.
+======================================================================================================================
+
+
+
+======================================================================================================================
+DELETE
+delete and delete_all typically returns the number of rows affected.
+
+Product.delete_all(["price > ?", @expensive_price])
+
+destroy() deletes the row of the object from the database and freezes to prevent future changes to the attributes
+order = Order.find_by(name: "Dave")
+Order.destroy
+# ... order is now frozen
+
+
+destroy_all with query
+Order.destroy_all(["shipped_at < ?", 30.days.ago])
+
+destroy is better than delete for business logic consistency in database
+=======================================================================================================================
+
+
+CALLBACKS
+=====================================================================================================================
+16 callbacks 
+14 of them are before after pairs except after_find and after_initialize
+
+
+The before_validation and after_validation calls also accept the on: :create or on: :update
+parameter, which will cause the callback to be called only on the selected
+operation.
+
+To associate a method, declare
+it as private or protected, and specify its name as a symbol to the handler
+declaration.
+
+class Order < ApplicationRecord
+  before_validation :normalize_credit_card_number
+  after_create do |order|
+    logger.info "Order #{order.id} created"
+  end
+  
+  protected
+  def normalize_credit_card_number
+    self.cc_number.gsub!(/[-\s]/, '')
+  end
+end
+
+if there are multiple callbacks, then they will generally be called in the order specified unless a handler throws :abort.
+
+-------------------------------------------------------------------------------------------------
+handlers can be shared between multiple models. A handler class is simply a class that defines callback methods
+( before_save() , after_create() , and so on). Create the source files for these handler
+classes in app/models .
+
+class CreditCardCallbacks
+  def before_validation(model)
+    model.cc_number.gsub!(/[-\s]/,'')  # substitute
+  end
+end
+
+class Order < ApplicationRecord
+  before_validation CreditCardCallbacks.new
+  #...
+end
+
+
+class Encrypter
+  def initialize(attrs_to_manage)
+  def before_save(model)
+  def after_save(model)
+  
+  alias_method :after_find :after_save # do the same after finding an existing method
+end
+
+require "encrypter"
+class Order < ApplicationOrder
+  encrypter = Encrypter.new([:name, :email])
+  before_save encrypter
+  after_save encrypter
+  after_find encrypter
+  
+  protected
+  def after_find
+  end
+  
+end
+why do we define an empty after_find() method? Remember that we said
+that for performance reasons after_find and after_initialize are treated specially.
+One of the consequences of this special treatment is that Active Record won’t
+know to call an after_find handler unless it sees an actual after_find() method in
+the model class. We have to define an empty placeholder to get after_find pro-
+cessing to take place.
+---------------------------------------------------------------------------------------
+
+alternative way to make helper method available to ApplicationRecord class for active record models:
+class ApplicationRecord < ActiveRecord::Base
+  self.abstract_class = true
+  def self.encrypt(*attr_names)
+  encrypter = Encrypter.new(attr_names)
+  before_save encrypter
+  after_save encrypter
+  after_find encrypter
+  
+  define_method(:after_find){}  
+  end
+end
+
+class Order < ApplicationRecord
+  encrypt(:name, :email)
+end
+=====================================================================================================================
+
+
+
+=====================================================================================================================
+TRANSACTIONS
+
+create_table :accounts, force: true do |t|
+  t.string :number
+  t.decimal :balance, precision: 10, scale: 2, default: 0
+end
+
+class Account < ActiveRecord::Base
+  validates :balance, numericality: { greater_than_or_equal_to: 0 }
+  
+  def withdraw(amount)
+    adjust_balance_and_save!(-amount)
+  end
+  
+  def deposit(amount)
+    adjust_balance_and_save!(amount)
+  end
+  
+  private
+  def adjust_balance_and_save!(amount)
+    self.balance += amount
+    save!
+  end
+end
+
+
+peter = Account.create(balance: 100, number: "12345")
+paul = Account.create(balance: 200, number: "54321")
+
+begin
+  Account.transaction do
+    paul.deposit(350)
+    peter.withdraw(350)
+  end
+rescue
+  puts "Transfer aborted"
+end
+puts "Paul has #{paul.balance}"
+puts "Peter has #{peter.balance}"
+=====================================================================================================================
+						EOF ACTIVE RECORD
+=====================================================================================================================
+
+
+=============================================================================================
+MIGRATIONS
+----------------------------------------------------------------------------------
+bin/rails generate model discount
+bin/rails generate migration add_price_column -> generate a migration on its own
+
+migrations are run using db:migrate
+REDO Migration -> bin/rails db:migrate:redo STEP=3
+
+up() -> migration 
+down() -> undoes the changes 
+change() -> to avoid the implementation of a down() method
+
+class AddEmailToOrders < ActiveRecord::Migration
+  def up
+    add_column :orders, :email, :string
+  end
+  def down
+    remove_column :orders, :email
+  end
+  def change
+    add_column :orders, :email, :string
+  end
+end
+-----------------------------------
+:binary , :boolean , :date , :datetime , :decimal ,
+:float , :integer , :string , :text , :time , and :timestamp
+
+
+add_column :orders, :attn, :string, limit:100
+add_column :orders, :order_type, :integer
+add_column :orders, :ship_class, :string, null: false, default: 'priority'
+add_column :orders, :amount, :decimal, precision: 8, scale: 2
+
+rename_column :orders, e_mail, :customer_email -> reversible
+
+up
+  change_column :orders, :order_type, :integer
+down
+  change_column :orders, :order_type, :integer
+  
+  
+def ChangeOrderTypeToString < ActiveRecord::Migration
+def change
+  change_column :orders, :order_type, :string, null: false
+end
+def down
+  raise ActiveRecord::IrreversibleMigration
+end
+
+When migrations go wrong, then drop the db, recreate, reapply 
+============================================================================================
+
+
+TABLE
+=====
+
+def change
+  rename_table :order_histories, :order_notes
+end
+
+see page 423 for dummy versions of database tables
+
+add_index :orders, :name
+--------------------------------------------------------------------------------
+custom primary key in a table
+create_table :tickets, primary_key: :number do |t|
+  t.text :description
+  t.timestamps
+end
+--------------------------------------------------------------------------------
+table with no primary key (sometimes for join)
+create_table :authors_books, id: false do |t|
+  t.integer :author_id, null: false
+  t.integer :book_id, null: false
+end
+--------------------------------------------------------------------------------
+use execute command to create custom data types for database migrations
+
+class AddPayTypes < ActiveRecord::Migrations[6.0]
+  def up
+    say_with_time "Updating prices..." do # this line prints the string passed before the block is executed and prints the benchmark after the block completes.
+    execute %{
+      CREATE TYPE pay_type AS ENUM ('check', 'credit card', 'purchase order')
+    }
+    end
+    end
+  def down
+    execute "DROP TYPE pay_type"
+  end
+  end
+  
+  
+ =========================
+ schema manipulation outside migrations
+  
+  
+def run_with_index(*columns)
+  connection.add_index(:orders, *columns)
+  begin
+    yield
+  ensure
+    connection.remove_index(:orders, *columns)
+  end
+end
+
+The statistics-gathering method in the model can use this as follows:
+
+def get_city_statistics
+  run_with_index(:city) do
+    # .. calculate stats
+  end
+end
+
+
+@quotes = Quote.ordered
+
+ACTION PACK
+=====================================================================================================================================
+Action Dispatch + Action controller
+rails routes -> command to see all paths in console
+
+resources :products
+resources :comments, except: [:update, :destroy]
+
+the links to the actions that edit and add smth should both use GET methods. so, link_to works find in its action view. 🙂️
+request to destroy smth must be HTTP DELETE. so it should be link_to smth, method: :delete 🙂️
+
+
+resources :products do
+  get :who_bought, on: :member # we want to add a new action named who_bought invoked via GET, each member of collection of smth.
+end
+
+on: :collection is used when we wanna use scoping, you may have collections of products on clearance of products discontinued.
+
+resources :products do
+  resources :reviews
+end
+
+This defines the top-level set of product routes and additionally creates a set
+of subroutes for reviews. Because the review resources appear inside the
+products block, a review resource must be qualified by a product resource.
+This means that the path to a review must always be prefixed by the path to
+a particular product. To fetch the review with ID 4 for the product with an ID
+of 99, you’d use a path of /products/99/reviews/4 .
+The named route for /products/:product_id/reviews/:id is product_review , not simply
+review.
+
+refactor this using routing CONCERN
+######################## resources go in config/routes.rb
+concern :reviewable do
+  resources :reviews
+end
+
+resources :products, concern: :reviewable
+
+---------------------------------------------------------------------------------------------
+nested resources like this can produce cumbersome URLs. soln to this is shallow route nesting
+
+resources :products, shallow: true do
+  resources :reviews
+end
+
+THIS IS EQUIVALENT TO /products/1 => product_path(1), /products/1/reviews => product_reviews_index_path(1), /reviews/2 => reviews_path(2)
+
+TO SELECT a response type depending on the requested format code the following:
+def show
+  respond_to do |format|
+    format.html
+    format.json { render json: @product.to_json }
+  end
+end
+
+by doing this /store/show/1 or 1.html returns html, 1.xml => xml and 1.json in json. 
+also GET HTTP://pragprog.com/store/show/123?format=xml passes the format in an HTTP request parameter.
+
+
+index entries using either a symbol or a string— params[:id] and params['id'] return the same value.
+request_method returns the request method, one of :delete , :get , :head , :post , or :put .
+delete? , get? , head? , post? , and put?
+xml_http_request? and xhr? return true if this request was issued by one of the Ajax helpers.
+see page 367 and ashepasher page
+----also use session to use session data
+
+RETURNING A TEMPLATE
+class BlogController < ApplicationController
+  def index
+    render
+  end
+end
+returns the template in app/views/blog/index.html.erb same as index action or no action declared at all.
+
+class SomeController < ApplicationController
+  if RAILS_ENV == "development"
+    def method_missing(name, *args)
+      render(inline: %{
+	<h2>Unknown action: #{name}</h2>
+        Here are the request parameters:<br/>
+        <%= debug(params) %> })
+    end
+  end
+end # adds this method to the development mode for formatted version of request parameters.
+
+render(action: :index) renders the action's default template.
+render(template: "blog/short_list")
+page 371 and ashepasher pages
+---------------------------------------------all forms of render take optional :status, :layout and :content_type params
+
+
+:layout
+If the parameter is false , no layout will be applied. If set to nil or true , a layout will be applied only if there is one associated with the current action. If the :layout parameter has a string as a value, it will be taken as the name of the layout to use when ren-
+dering. A layout is never applied when the :nothing option is in effect. 
+
+:content_type
+The :content_type parameter lets you specify a value that will be passed to the browser in the Content-Type HTTP header.
+Sometimes it is useful to be able to capture what would otherwise be sent to the browser in a string. 
+
+render_to_string() ->
+method takes the same parameters as render() but returns the result of rendering as a string—the rendering is not stored in the response object and so will not be sent to the user unless you take some additional steps.
+--------------------------------------------------------------------------------------------------
+RETRUNING DATA
+
+------------>
+send_data(data, options...) e.g. send_data(png_data, type: "image/png", disposition: "inline")
+:disposition -> displays inline or downloaded and saved
+:filename -> default filename to use when saving the data
+
+
+--------------------------------------------------------------------------------------------------
+-------> send_file(path, options) sends given file to the client setting its length, type, disposition, transfer encoding headers.
+:buffer_size -> the amount set to the browser in each write if streaming is enabled when :stream is true, if false, entire file 
+is read into server memory and set to client, otherwise sent to client in buffer size chunks.
+
+status code 200 -> ok
+redirection status code 301 -> permanent, 307-> temporary,
+
+
+--------------------
+redirect_to:
+
+class BlogController
+  def display
+    @article = Article.find(params[:id])
+  end
+  def add_comment
+    @article = Article.find(params[:id])
+    comment = Comment.new(params[:comment])
+    @article.comments << comment
+    if @article.save
+      flash[:notice] = "Thank you for your valuable comment"
+    else
+      flash[:notice] = "We threw your worthless comment away"
+    end
+    redirect_to(action: 'display')
+  end
+end
+
+redirect_to(action: :display)
+redirect_to(path)
+redirect_to(:back)
+Make redirect_to permanent, all you have to do is set headers["Status"] = "301 Moved Permanently" redirect_to("http://my.new.home")
+
+
+.build -------------------->
+.build method instantiates with defined association.
+
+---------------------------> params.require
+The params in a controller looks like a Hash, but it's actually an instance of ActionController::Parameters , which 
+provides several methods such as require and permit . The require method ensures that a specific parameter is 
+present, and if it's not provided, the require method throws an error.
+
+permit
+---------------------------------------------------------------
+The permit method returns a copy of the parameters object, returning only the permitted keys and values.
+
+---------------------------------
+
+Sessions
+----------------------------
+-objects in a session must be serializable (using Ruby’s Marshal functions). This means, for example, that you cannot store an I/O 
+object in a session.
+- If you store any Rails model objects in a session, you’ll have to add model declarations for them. This causes
+ Rails to preload the model class so that its definition is available when Ruby comes to deserialize it from the
+session store. If the use of the session is restricted to just one controller,this declaration can go at the top of that controller.
+class BlogController < ApplicationController
+model :user_preferences
+# . . .
+However, if the session might get read by another controller (which is likely in any application with multiple controllers), 
+you’ll probably want to add the declaration to application_controller.rb in app/controllers .
+-store massive objects in the database and reference them from the session particularly for cookie-based sessions.
+
+- volatile data Such as number of articles and logged-in user object data should be stored in database and referenced from session.
+
+- critical info like order confirmation number should be stored in database.
+
+There’s one more caveat, and it’s a big one. If you store an object in session data, then the next time you come back to that browser, 
+your application will end up retrieving that object. However, if in the meantime you’ve updated your application, the object in session 
+data may not agree with the definition of that object’s class in your application, and the application will fail while processing the 
+request. You have three options here. One is to store the object in the database using conventional models and keep just the ID of the 
+row in the session. Model objects are far more forgiving of schema changes than the Ruby marshaling library. The second option is to 
+manually delete all the session data stored on your server whenever you change the definition of a class stored in that data.
+The third option is slightly more complex. If you add a version number to your session keys and change that number whenever you 
+update the stored data, you’ll only ever load data that corresponds with the current version of the application. You can potentially 
+version the classes whose objects are stored in the session and use the appropriate classes depending on the session keys associated 
+with each request. This last idea can be a lot of work, so you’ll need to decide whether it’s worth the effort.
+
+Session Storage
+---------------------------
+set attribute session_store to a class that implements storage strategy.
+page 380 to see options
+session_store = :cookie store -> default in rails -> limited to 4KB
+session_store = :active_record_store -> activerecord-session_store gem to store application database using ActiveRecordStore.
+:drb_store -> over a n/w DRbstore database manager stores session data on a DRb server.
+:memory_store -> in-memory session (BAD)
+FOR A HIGH volume site, keeping the size of the session data small and using cookie_store is the way to go.
+the next choice for more data is to use :active_record_store
+after that, if that also becomes a bottleneck, use DRb based solution.
+
+--> Session expiration should be done by removing their server-side session data.
+implementing this depends on the storage mechanism, use the updated_at column and delete all sessions that have not been modified
+in the last hour (ignoring daylight saving time changes).
+e.g:->
+delete from sessions
+  where now() - updated_at > 3600;
+
+DRb sessions should keep a timestamp record.
+In all cases, application can help deleting  the entries in a hash to delete a hash by calling reset_session()
+-------------------------------------------------
+FLASH to comm. b/w actions
+
+By default, values stored
+into the flash during the processing of a request will be available during the
+processing of the immediately following request. Once that second request
+has been processed, those values are removed from the flash.
+
+sometimes convenient to use the flash as a way of passing messages into
+a template in the current action.
+
+flash.now updates the flash but does not add it to the session data.
+flash.keep keeps the entries in the flash until another request. with no params, the flash contents is preserved.
+only pass strings and hashes in the flash.
+
+CALLBACKS-
+callbacks apply to all actions in a controller (and any subclasses of that controller). You can modify this with 
+the :only option, which takes one or more actions on which the callback is invoked, and the :except option, which
+lists actions to be excluded from callback.
+
+around callbacks only take :only or :except
+Callback inheritance:-> skip_before_action and skip_after_action should be used to restrict a particular callback to not run
+in a child controller. only accepts :only, and :except parameters.
+skip_action skips any action.
+=========================================================================================================================================
+Action View
+render(template: 'controller/name')
+render(file: 'dir/template') -> useful to share template between applications
+
+-all instance variables are available in a template
+-flash, headers, logger, params, request, response and session are available
+-current controller obj is available with the attribute name controller.
+-path to the base directory is stored in the atrribute base_path
+
+<%= form_for(:model) do |form| %>
+  <p>
+    <%= form.label :input %>
+    <%= form.text_field :input, :placeholder => 'Enter your text here..' %> #label and text field with placeholder text inside it
+    <%= form.label :address, :style => 'float: left'%><%= form.text_area :rows => 3, :cols => 40 %>address text 
+                                                                                  floating left with text area on the right
+    <%= form.radio_button :color, 'red' %><%= form.radio_button :color, 'green'%> # radio inputs side by side
+    <%= form.check_box :ketchup %><%= form.check_box :mustard %> # should be label before each of these checkbox inputs
+    <%= form.select :priority, (1..10) %> # dropdown
+    <%= form.time_select :alarm %> #datetime select clock and date select
+  </p>
+<% end %>
+
+- search_field(), telephone_field(), url_field, email_field(), number_field and range_field are other options.
+- hidden_field -> not displayed but value is passed back to the server. this is used for storing transient data in sessions.
+- password_field
+
+
+{ id: "123" } -> id = 123
+{ user: {name: "Dave" }} -> user[name]
+
+#controller
+def edit
+  @user = User.find(params[:id])
+end
+
+# edit.html.erb
+<% form_for :user, url:{action: save, id:@user} do |f| %>
+  <%= f.text_field 'name' %>
+<% end %>
+
+# controller update database
+def save
+  user = User.find(params[:id])
+  if user.update!(params[:user])
+    ...
+  end
+end
+
+
+polymorphic routing=============
+<%= button_to "Delete", [quote, line_item_date] %>
+<%= button_to "Delete", quote_line_item_date_path(quote, line_item_date) %>
+the two lines are equivalent.
+
+polymorphic routing in controllers
+redirect_to @quote
+redirect_to quote_path(@quote)
+================================
+--------------------------------------------------------------------------------------------
+# UPLOAD a picture as a blob or something like that
+EASIER ALTERNATIVES Paperclip attachment_fu plugins
+// db/migration
+class CreatePictures < ActiveRecord::Migration
+  def change
+    create_table :pictures do |t|
+      t.string :comment
+      t.string :name
+      t.string :content_type
+      # if using MySQL, blobs default ot 64k, so give and explicit size to extend them
+      t.binary :data, :limit => 1.megabyte
+    end
+  end
+end
+
+// controllers/upload_controller.rb
+class UploadController < ApplicationController
+  def get
+    @picture = Picture.new
+  end
+
+  def save
+    @picture = Picture.new(picture_params)
+    if @picture.save
+      redirect_to(action: 'show', id: @picture.id)
+    else
+      render(action: :get)
+    end
+  end
+
+  def show
+    @picture = Picture.find(params[:id])
+  end
+
+  def picture
+    @picture = Picture.find(params[:id])
+    send_data(@picture.data, filename: @picture.name, type: @picture.content_type, disposition: "inline")
+  end
+
+  private
+  # only allow white list params through
+  def picture_params
+    params.require(:picture).permit(:comment, :uploaded_picture)
+  end
+end
+
+# views/upload/get.html.erb
+<%= form_for(:picture, url: { action: 'save'}, html: {multipart: true}) do |form| %>
+  Comment: <%= form.text_field("comment") %></br>
+  Upload your picture: <%= form.file_field("uploaded_picture") %></br>
+  <%= submit_tag("Upload file") %>
+<% end %>
+
+// show.html.erb
+<h3><%= @picture.comment %></h3>
+<img src="<%= url_for(:action => 'picture', :id => @picture.id) %>"/>
+
+models/picture.rb
+class Picture < ActiveRecord::Base
+  validates_format_of :content_type, with: /\Aimage/, message: "must be a picture"
+
+  def uploaded_picture=(picture_field)
+    self.name = base_part_of(picture_field.original_filename)
+    self.content_type = picture_field.content_type.chomp
+    self.data = picture_field.read
+  end
+  def base_part_of(file_name)
+    File.basename(file_name).gsub(/[^\w._-]/,'')
+  end
+end
+
+EASIER ALTERNATIVES Paperclip or attachment_fu plugins
+
+
+HELPERS 
+rails generate controller creates a stub helper module automatically.
+
+<h3><%= @page_title || "Pragmatic Store" %></h3>
+equivalent helper declaration and call
+module StoreHelper
+  def page_title
+    @page_title || "Pragmatic Store"
+  end
+end
+// <h3><%= page_title %></h3>
+Action View RDoc for specifics of the built-in HELPERS.
+
+distance_of_time_in_words
+number_to_currency
+time_ago_in_words
+number_to_human_size
+number_to_percentage
+number_to_phone
+number_with_delimiter
+number_with_precision
+<%= debug(params) %>
+see pg. 399 for options
+
+cycle() helper can be used to return the successive values from a sequence each time it’s called, repeating
+the sequence as necessary. This is often used to create alternating styles for the rows in a table or list.
+current_cycle() and reset_cycle()
+
+<%= link_to "Add Comment", new_comments_path %> first param is text displayed for the link and second one is str or hash 4 target pth.
+
+link_to ---------------------->>>>>>>>>>
+<%= link_to "Delete", product_path(@product), {class: "dangerous", method: 'delete'} %>
+An optional third parameter provides HTML attributes for the generated link.
+
+<%= link_to "Delete", product_path(@product), method: :delete, data: { confirm: 'Are you sure?' } %>
+
+The :method option allows you to make the link look to the application as if the request were created by a POST, PUT, PATCH, or 
+DELETE, rather than the normal GET method.
+
+The button_to()-------->
+ method works the same as link_to() but generates a button in a self-contained form rather than a straight hyperlink.
+This is the preferred method of linking to actions that have side effects. However, these buttons live in their own forms, which 
+imposes a couple of restrictions: they cannotappear inline, and they cannot appear inside other forms.
+
+-link_to_if(), link_to_unless()
+-link_to_unless_current creates menus in sidebars where curr page name is shown as plain text and other entries are hyperlinks.
+<ul>
+<% %w{ create list edit save logout }.each do |action| %>
+<li>
+<%= link_to_unless_current(action.capitalize, action: action) %>
+</li>
+<%end%>
+</ul>
+
+-url_for
+-image_tag # e.g. <%= image_tag("/assets/dave.png", class: "bevel", width: "80", height: "120")%>
+<%= link_to(image_tag("delete.png", size: "50x22"), product_path(@product),data: { confirm: "Are you sure?" },method: :delete) %>
+<%= mail_to("support@pragprog.com", "Contact Support", subject: "Support question from #{@user.name}", encode: "javascript") %>
+:replace_at and :replace_dot options to replace the at sign and dots in the displayed name with other strings.
+stylesheet_link_tag() and javascript_link_tag()
+
+<%= auto_discovery_link_tag(:atom, products_url(format: 'atom')) %>
+Specifying a layout of nil turns off layouts for a controller.
+
+templates
+app/views/layouts
+class StoreController < ApplicationController
+  layout "standard", except: [ :rss, :atom ]
+  # ...
+  or :determine_layout
+  def rss
+    render(layout: false) # never use a layout
+  end
+
+  def checkout
+    render(layout: "layouts/simple")
+  end
+
+  private
+  def determine_layout
+    if Store.is_closed?
+      "store_down"
+    else
+      "standard"
+    end
+  end
+end
+
+give a name to the content inside a block with content_for
+
+new and edit default call form partial.
+nilClass error hoile obj& dile oikhane ar kono function er call block e dhuke na, so error hoy na.
+
+<h1>Regular Template</h1>
+<% content_for(:sidebar) do %>
+<ul>
+  <li>this text will be rendered</li>
+  <li>and saved for later</li>
+  <li>it may contain <%= "dynamic" %> stuff</li>
+</ul>
+<% end %>
+<p>
+Here's the regular stuff that will appear on
+the page rendered by this template.
+</p>
+
+then use yield :name_for_the_content_for to include it
+
+<%= render(partial: "article", object: @an_article) %>
+
+You can set additional local variables in the template by passing render() a
+:locals parameter. This takes a hash where the entries represent the names
+and values of the local variables to set:
+render(partial: 'article',
+        object: @an_article,
+        locals: { authorized_by: session[:user_name],
+        from_ip: request.remote_ip })
+
+To display a list of article model objects using our previously defined
+_article.html.erb partial, we could write this:
+<%= render(partial: "article", collection: @article_list) %>
+article_counter will have its value set to the index of the current article
+
+<%= render(partial: "animal", collection:%w{ ant bee cat dog elk },spacer_template: "spacer")%>
+_animal.html.erb <p>The animal is <%= animal %></p>
+_spacer.html.erb -> </hr>
+
+The convention among Rails applications is to store these shared partials in
+a subdirectory of app/views called shared . Render shared partials using statements
+such as these:
+<%= render("shared/header", locals: {title: @article.title}) %>
+<%= render(partial: "shared/post", object: @article) %>
+
+<%= render partial: "user", layout: "administrator" %>
+<%= render layout: "administrator" do %>
+# ...
+<% end %>
+Partial layouts are to be found directly in the app/views directory associated
+with the controller, along with the customary underbar prefix, such as
+app/views/users/_administrator.html.erb .
+=========================================================================================================================================
+RSPEC
+bin/rails generate rspec:install
+bin/rails spec -> tests application with rspec
+bin/rails generate rspec:model Cart
+
+SLIM
+here, <%= %> is equivalent to =
+in slim, <% %> is equivalent to -
+
+Sprockets, webpacker, slim, RSpec, cssnext
+
+
+
+COMMON BUG FIXES
+"Form responses must redirect to another location". error
+
+This is a "breaking change" since Rails 7 because of Turbo Drive. We will discuss this topic in-depth in Chapter 3 dedicated to Turbo Drive. 
+If you ever encounter this issue, the way to fix it is to add status: :unprocessable_entity to the QuotesController#create 
+and QuotesController#update.
+
+REDIS SERVER RESTART
+==========================
+sudo systemctl enable redis-server
+sudo systemctl restart redis
+redis-cli
+ping
+
+------------------------------------------Rails 7======================================================================
+link_to sanitize("&larr; Back to quotes"), quotes_path
+turbo_frame_tag
+
+Turbo Frames are independent pieces of a web page that can be appended,
+prepended, replaced, or removed without a complete page refresh and writing a single line of JavaScript!
+
+<%= turbo_frame_tag "first_turbo_frame" do %>
+  <%= render "form", quote: @quote %>
+<% end %>
+
+Rule 1: When clicking on a link within a Turbo Frame, Turbo expects a frame of the same id on the target page.
+It will then replace the Frame's content on the source page with the Frame's content on the target page.
+
+Rule 2: When clicking on a link within a Turbo Frame, if there is no Turbo Frame with the same id on the target page, 
+the frame disappears, and the error Response has no matching <turbo-frame id="name_of_the_frame"> element is logged in the console.
+
+Rules 3: A link can target another frame than the one it is directly nested in thanks to the data-turbo-frame data attribute.
+
+turbo_frame_tag helper. You can pass it a string or any object that can be converted to a dom_id. 
+The dom_id helper helps us convert an object into a unique id
+# If the quote is persisted and its id is 1:
+dom_id(@quote) # => "quote_1"
+dom_id(Quote.new) => "new_quote" # if the quote is a new record
+dom_id(Quote.new, "prefix") # prefix_new_quote
+turbo_frame_tag "quote_#{quote.id}" || turbo_frame_tag dom_id(@quote) || turbo_frame_tag @quote
+
+# Remove a Turbo Frame
+turbo_stream.remove
+
+# Insert a Turbo Frame at the beginning/end of a list
+turbo_stream.append
+turbo_stream.prepend
+
+# Insert a Turbo Frame before/after another Turbo Frame
+turbo_stream.before
+turbo_stream.after
+
+# Replace or update the content of a Turbo Frame
+turbo_stream.update
+turbo_stream.replace
+
+except for the remove method, the turbo_stream helper 
+expects a partial and locals as arguments to know which HTML it needs to append, prepend, replace from the DOM
+@quotes = Quote.ordered
+
+We also delegate the quote method to the LineItem#line_item_date method. That way, the two following lines are equivalent:
+
+line_item.line_item_date.quote
+line_item.quote
+
+mysql -u root -p
+systemctl status mysql.service # check myswl status
+sudo systemctl start mysql # start again
+
+SOLVE mysql gem installation error using:
+-sudo apt-get install libmysqlclient-dev
