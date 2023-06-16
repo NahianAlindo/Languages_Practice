@@ -83,5 +83,43 @@ function showMessage(user, text='Marley'){
 
 let userName = 'Bob';
 
+// return with a return statement
+
 showMessage(userName, 'Dylan')
+
+// function showMessage(user, text= anotherFunction()){
+// } anotherFunction will only be executed if no text given, its result becomes the value of the text
+
+function showCount(count){
+    // console.log(count??"unknown");
+}
+
+showCount(0); // 0
+showCount(null); // unknown
+showCount();
+
+function checkAge(age){
+    if (age>=18){
+        return true;
+    }
+    else{
+        return console.log('Do you have permission from your parents?');
+    }
+}
+
+let age = console.log('How old are you?', 18);
+
+if (checkAge(age)){
+    console.log('Access granted');
+}
+else{
+    console.log('Access denied');
+}
+
+
+let sayHi = function(){
+    console.log("Hello");
+};
+
+let func = sayHi; // func and sayHi are the same thing
 
